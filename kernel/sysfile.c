@@ -65,6 +65,8 @@ sys_dup(void)
   return fd;
 }
 
+uint64 readcount = 0;
+
 uint64
 sys_read(void)
 {
@@ -72,11 +74,19 @@ sys_read(void)
   int n;
   uint64 p;
 
+  readcount++;
+
   argaddr(1, &p);
   argint(2, &n);
   if(argfd(0, 0, &f) < 0)
     return -1;
   return fileread(f, p, n);
+}
+
+uint64
+sys_getreadcount(void)
+{
+  return readcount;
 }
 
 uint64
