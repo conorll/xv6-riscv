@@ -7,6 +7,18 @@
 #include "proc.h"
 
 uint64
+sys_settickets(void)
+{
+  int tickets;
+
+  argint(0, &tickets);
+  if (tickets < 1)
+    return -1;
+  myproc()->tickets = tickets;
+  return 0;
+}
+
+uint64
 sys_exit(void)
 {
   int n;
