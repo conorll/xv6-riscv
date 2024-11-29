@@ -169,6 +169,8 @@ freeproc(struct proc *p)
   p->killed = 0;
   p->xstate = 0;
   p->state = UNUSED;
+
+  p->tickets = 0;
 }
 
 // Create a user page table for a given process, with no user memory,
@@ -251,6 +253,8 @@ userinit(void)
 
   p->state = RUNNABLE;
 
+  p->tickets = 1;
+
   release(&p->lock);
 }
 
@@ -301,6 +305,8 @@ fork(void)
 
   // Cause fork to return 0 in the child.
   np->trapframe->a0 = 0;
+
+  np->tickets = p->tickets;
 
   // increment reference counts on open file descriptors.
   for(i = 0; i < NOFILE; i++)
@@ -689,7 +695,7 @@ procdump(void)
       state = states[p->state];
     else
       state = "???";
-    printf("%d %s %s", p->pid, state, p->name);
+    printf("%d %s %s %d %p", p->pid, state, p->name, p->tickets, p->parent);
     printf("\n");
   }
 }
