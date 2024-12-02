@@ -140,6 +140,29 @@ found:
   return p;
 }
 
+// for when lock is already held
+static void
+freeproc1(struct proc *p)
+{
+  if(p->trapframe)
+    kfree((void*)p->trapframe);
+  p->trapframe = 0;
+  if(p->pagetable)
+    proc_freepagetable(p->pagetable, p->sz);
+  p->pagetable = 0;
+  p->sz = 0;
+  p->parent = 0;
+  p->name[0] = 0;
+  p->chan = 0;
+  p->killed = 0;
+  p->xstate = 0;
+
+  p->pid = 0;
+  p->state = UNUSED;
+  p->tickets = 0;
+  p->ticks= 0;
+}
+
 // free a proc structure and the data hanging from it,
 // including user pages.
 static void
@@ -152,16 +175,20 @@ freeproc(struct proc *p)
     proc_freepagetable(p->pagetable, p->sz);
   p->pagetable = 0;
   p->sz = 0;
-  p->pid = 0;
   p->parent = 0;
   p->name[0] = 0;
   p->chan = 0;
   p->killed = 0;
   p->xstate = 0;
 
-  p->tickets = 0;
+  acquire(&p_lock);
 
+  p->pid = 0;
   p->state = UNUSED;
+  p->tickets = 0;
+  p->ticks= 0;
+
+  release(&p_lock);
 }
 
 // Create a user page table for a given process, with no user memory,
@@ -242,11 +269,10 @@ userinit(void)
   safestrcpy(p->name, "initcode", sizeof(p->name));
   p->cwd = namei("/");
 
-  p->tickets = 1;
-
   acquire(&p_lock);
 
   p->state = RUNNABLE;
+  p->tickets = 1;
 
   release(&p_lock);
 }
@@ -298,8 +324,6 @@ fork(void)
   // Cause fork to return 0 in the child.
   np->trapframe->a0 = 0;
 
-  np->tickets = p->tickets;
-
   // increment reference counts on open file descriptors.
   for(i = 0; i < NOFILE; i++)
     if(p->ofile[i])
@@ -314,6 +338,7 @@ fork(void)
   acquire(&p_lock);
 
   np->state = RUNNABLE;
+  np->tickets = p->tickets;
 
   release(&p_lock);
   return pid;
@@ -402,7 +427,7 @@ wait(uint64 addr)
             release(&p_lock);
             return -1;
           }
-          freeproc(pp);
+          freeproc1(pp);
           release(&p_lock);
           return pid;
         }
@@ -448,6 +473,7 @@ scheduler(void)
         // to release its lock and then reacquire it
         // before jumping back to us.
         p->state = RUNNING;
+        p->ticks++;
         c->proc = p;
         swtch(&c->context, &p->context);
 
@@ -688,7 +714,7 @@ procdump(void)
       state = states[p->state];
     else
       state = "???";
-    printf("%d %s %s %d %p", p->pid, state, p->name, p->tickets, p->parent);
+    printf("%d %s %s %d %d %p", p->pid, state, p->name, p->tickets, p->ticks, p->parent);
     printf("\n");
   }
 }
