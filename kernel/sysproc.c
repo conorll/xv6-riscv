@@ -5,6 +5,45 @@
 #include "memlayout.h"
 #include "spinlock.h"
 #include "proc.h"
+#include "pstat.h"
+
+extern struct spinlock p_lock;
+extern struct proc proc[NPROC];
+
+uint64
+sys_getpinfo(void)
+{
+  uint64 addr;
+  struct proc *p;
+  struct pstat ps;
+
+  argaddr(0, &addr);
+
+  acquire(&p_lock);
+
+  for (int i = 0; i < NPROC; i++) {
+    p = &proc[i];
+    if (p->state == UNUSED) {
+      ps.inuse[i] = 0;
+      ps.tickets[i] = -1;
+      ps.pid[i] = -1;
+      ps.ticks[i] = -1;
+    }
+    else {
+      ps.inuse[i] = 1;
+      ps.tickets[i] = p->tickets;
+      ps.pid[i] = p->pid;
+      ps.ticks[i] = p->ticks;
+    }
+  }
+
+  release(&p_lock);
+
+  if(copyout(myproc()->pagetable, addr, (char *)&ps, sizeof(ps)) < 0)
+    return -1;
+
+  return 0;
+}
 
 uint64
 sys_settickets(void)
