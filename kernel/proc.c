@@ -445,6 +445,19 @@ wait(uint64 addr)
   }
 }
 
+extern uint64 r_time();
+uint64 rand_seed;
+
+// Function is run at startup
+void generate_rand_seed() {
+  rand_seed = r_time();
+}
+
+uint64 rand() {
+  rand_seed = (rand_seed * 1103515245 + 12345) % (1 << 31);  // LCG formula
+  return rand_seed;
+}
+
 // Per-CPU process scheduler.
 // Each CPU calls scheduler() after setting itself up.
 // Scheduler never returns.  It loops, doing:
@@ -454,6 +467,63 @@ wait(uint64 addr)
 //    via swtch back to the scheduler.
 void
 scheduler(void)
+{
+  struct proc *p;
+  struct cpu *c = mycpu();
+
+  c->proc = 0;
+  for(;;){
+    // The most recent process to run may have had interrupts
+    // turned off; enable them to avoid a deadlock if all
+    // processes are waiting.
+    intr_on();
+
+    int total_tickets = 0;
+    acquire(&p_lock);
+
+    for(p = proc; p < &proc[NPROC]; p++) {
+      if(p->state == RUNNABLE) {
+        total_tickets += p->tickets;
+      }
+    }
+
+    if(total_tickets == 0) {
+      // nothing to run; stop running on this core until an interrupt.
+      release(&p_lock);
+      intr_on();
+      asm volatile("wfi");
+      continue;
+    }
+
+    int winner = rand() % total_tickets;
+    int current_ticket = 0;
+    for(p = proc; p < &proc[NPROC]; p++) {
+      if(p->state != RUNNABLE) {
+        continue;
+      }
+      current_ticket += p->tickets;
+      if (current_ticket >= winner) {
+        // Switch to chosen process.  It is the process's job
+        // to release its lock and then reacquire it
+        // before jumping back to us.
+        p->state = RUNNING;
+        p->ticks++;
+        c->proc = p;
+        swtch(&c->context, &p->context);
+
+        // Process is done running for now.
+        // It should have changed its p->state before coming back.
+        c->proc = 0;
+        break;
+      }
+    }
+    release(&p_lock);
+  }
+}
+
+// Currently not being used
+void
+round_robin_scheduler(void)
 {
   struct proc *p;
   struct cpu *c = mycpu();

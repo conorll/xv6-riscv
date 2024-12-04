@@ -41,5 +41,6 @@ main()
     plicinithart();   // ask PLIC for device interrupts
   }
 
+  generate_rand_seed();
   scheduler();        
 }
